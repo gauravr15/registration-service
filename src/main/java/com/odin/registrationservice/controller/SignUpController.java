@@ -23,12 +23,18 @@ public class SignUpController {
 
 	@Autowired
 	private SignUpFactory signUpFactory;
-	
+
 	@PostMapping(ApplicationConstants.SIGN_UP)
-	public ResponseEntity<Object> signUp(HttpServletRequest req,@Valid @RequestBody ProfileDTO signUp){
+	public ResponseEntity<Object> signUp(HttpServletRequest req, @Valid @RequestBody ProfileDTO signUp) {
 		SignUpService signUpObject = signUpFactory.getSignUpType(signUp.getCustomerType());
 		ResponseDTO response = signUpObject.signUp(req, signUp);
-		return new ResponseEntity<>(response,HttpStatus.OK);
-		
+		return new ResponseEntity<>(response, HttpStatus.OK);
+	}
+
+	@PostMapping(ApplicationConstants.SIGN_UP + ApplicationConstants.COMPLETE)
+	public ResponseEntity<Object> completeSignUp(HttpServletRequest req, @Valid @RequestBody ProfileDTO signUp) {
+		SignUpService signUpObject = signUpFactory.getSignUpType(signUp.getCustomerType());
+		ResponseDTO response = signUpObject.completeSignUp(req, signUp);
+		return new ResponseEntity<>(response, HttpStatus.OK);
 	}
 }

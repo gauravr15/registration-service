@@ -2,6 +2,8 @@ package com.odin.registrationservice.entity;
 
 import java.sql.Timestamp;
 
+import javax.persistence.Column;
+
 import com.odin.registrationservice.enums.CustomerType;
 
 import lombok.AllArgsConstructor;
@@ -56,4 +58,5 @@ public class Profile {
 	private String bankDetails;
 
 	private Auth auth;
+
 }

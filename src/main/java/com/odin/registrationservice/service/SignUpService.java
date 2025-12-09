@@ -8,4 +8,8 @@ import com.odin.registrationservice.dto.ResponseDTO;
 public interface SignUpService {
 
 	public ResponseDTO signUp(HttpServletRequest req, ProfileDTO signUpDTO);
+
+	public ResponseDTO signUpViaOtp(HttpServletRequest req, ProfileDTO signUpDTO);
+
+	public ResponseDTO completeSignUp(HttpServletRequest req, ProfileDTO signUpDTO);
 }

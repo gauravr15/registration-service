@@ -88,6 +88,12 @@ public class ResponseObject {
         	response.setStatus(ResponseCodes.SUCCESS);
         else
         	response.setStatus(ResponseCodes.FAILURE);
+        Optional<ResponseMessages> msg = responseMessageRepo.findById(statusCode);
+        if (!msg.isPresent()) {
+            response.setMessage(statusCode > 2000 ? ResponseCodes.SUCCESS : ResponseCodes.FAILURE);
+        } else {
+            response.setMessage(getLanguageBasedMessage(msg.get(), "en"));
+        }
         return response;
 
     }

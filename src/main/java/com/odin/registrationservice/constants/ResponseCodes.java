@@ -17,5 +17,9 @@ public class ResponseCodes {
 	public static final String FAILURE = "FAILURE";
 	public static final Integer USER_EXISTS = 996;
 	public static final Integer USER_CREATED = 2001;
+	public static final Integer OTP_SENT_SUCCESSFUL = 2020;
+	
+	public static final Integer OTP_EXPIRED = 994;
+	public static final Integer OTP_INVALID = 993;
 	
 }
