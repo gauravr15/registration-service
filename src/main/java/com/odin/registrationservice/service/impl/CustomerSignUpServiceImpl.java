@@ -106,7 +106,10 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			log.info("Creating new customer");
 			Auth newAuth = Auth.builder().isActive(true).isDeleted(false).isFirstTimeLogin(true).isPermLock(false)
 					.isTempLock(false).isTempPassword(true).incorrectPasswordCount(0).passwordChangeCount(0)
-					.permLockCount(0).tempLockCount(0).password(hashedPassword).isOtpLogin(false).build();
+					.permLockCount(0).tempLockCount(0).password(hashedPassword).isOtpLogin(false)
+					.publicKey(signUpDTO.getAuth().getPublicKey())
+					.keyVersion(!ObjectUtils.isEmpty(signUpDTO.getAuth().getPublicKey()) ? "1" : null)
+					.build();
 			Profile newProfile = Profile.builder().auth(newAuth).address(signUpDTO.getAddress())
 					.customerType(signUpDTO.getCustomerType()).email(signUpDTO.getEmail()).isActive(true)
 					.isDeleted(false).isNotificationEnabled(true).isTransactionEnabled(false)
@@ -167,11 +170,14 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 				notification.sendOtpMessage(notify);
 			}
 			log.info("Creating new customer");
-			Auth newAuth = Auth.builder().isActive(true).isDeleted(false).isFirstTimeLogin(true).isPermLock(false)
+			Auth newAuth = Auth.builder().isActive(false).isDeleted(false).isFirstTimeLogin(true).isPermLock(false)
 					.isTempLock(false).isTempPassword(true).incorrectPasswordCount(0).passwordChangeCount(0)
-					.permLockCount(0).tempLockCount(0).isOtpLogin(true).build();
+					.permLockCount(0).tempLockCount(0).isOtpLogin(true)
+					.publicKey(signUpDTO.getAuth().getPublicKey())
+					.keyVersion(!ObjectUtils.isEmpty(signUpDTO.getAuth().getPublicKey()) ? "1" : null)
+					.build();
 			Profile newProfile = Profile.builder().auth(newAuth).address(signUpDTO.getAddress())
-					.customerType(signUpDTO.getCustomerType()).email(signUpDTO.getEmail()).isActive(true)
+					.customerType(signUpDTO.getCustomerType()).email(signUpDTO.getEmail()).isActive(false)
 					.isDeleted(false).isNotificationEnabled(true).isTransactionEnabled(false)
 					.firstName(signUpDTO.getFirstName()).lastName(signUpDTO.getLastName()).mobile(signUpDTO.getMobile())
 					.build();
@@ -187,7 +193,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		String deviceSignature = utility.getDeviceSignature(req);
 		String flowAuthType = utility.getAuthType(ApplicationConstants.AUTH_FLOW_SIGNUP);
 		log.info("Signup flow auth type from Redis: {}", flowAuthType);
-		Profile checkProfile = profileRepo.findByMobileOrEmail(signUpDTO.getMobile(), signUpDTO.getEmail());
+		Profile checkProfile = profileRepo.findByMobileOrEmailAndIsActive(signUpDTO.getMobile(), signUpDTO.getEmail(), false);
 
 		if (!ApplicationConstants.OTP.equalsIgnoreCase(flowAuthType) || !checkProfile.getAuth().isOtpLogin()) {
 			return responseObj.buildResponse(ResponseCodes.INVALID_REQUEST);
@@ -206,23 +212,16 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
 		} else {
-			log.info("Creating new customer");
-			Auth newAuth = Auth.builder().isActive(true).isDeleted(false).isFirstTimeLogin(false).isPermLock(false)
-					.isTempLock(false).isTempPassword(false).incorrectPasswordCount(0).passwordChangeCount(0)
-					.permLockCount(0).tempLockCount(0).password(ApplicationConstants.OTP_BASED_AUTH).isOtpLogin(true)
-					.build();
-			Profile newProfile = Profile.builder().auth(newAuth).address(signUpDTO.getAddress())
-					.customerType(signUpDTO.getCustomerType()).email(signUpDTO.getEmail()).isActive(true)
-					.isDeleted(false).isNotificationEnabled(true).isTransactionEnabled(false)
-					.firstName(signUpDTO.getFirstName()).lastName(signUpDTO.getLastName()).build();
-			newProfile = profileRepo.save(newProfile);
-			String accessToken = jwtTokenUtil.generateAccessToken(String.valueOf(newProfile.getCustomerId()),
+			checkProfile.setIsActive(true);
+			checkProfile.getAuth().setIsActive(true);
+			profileRepo.save(checkProfile);
+			String accessToken = jwtTokenUtil.generateAccessToken(String.valueOf(checkProfile.getCustomerId()),
 					deviceSignature);
 			String refreshToken = jwtTokenUtil.generateRefreshToken();
 
 			// Persist refresh token (per device)
 			RefreshToken rt = new RefreshToken();
-			rt.setCustomerId(Long.valueOf(newProfile.getCustomerId()));
+			rt.setCustomerId(Long.valueOf(checkProfile.getCustomerId()));
 			rt.setRefreshToken(refreshToken);
 			Timestamp now = new Timestamp(System.currentTimeMillis());
 			rt.setCreatedAt(now);
@@ -233,7 +232,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 
 			JwtDTO jwtResponse = JwtDTO.builder().accessToken(accessToken).refreshToken(refreshToken)
 					.deviceSignature(deviceSignature).build();
-			newProfile.setAuth(null);
+			checkProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.USER_CREATED, jwtResponse);
 		}
 	}

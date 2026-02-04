@@ -46,6 +46,23 @@ public class ProfileRepository {
 	    return utility.getAnInstance(response.getData(), Profile.class);
 	}
 	
+	public Profile findByMobileOrEmailAndIsActive(String mobile, String email, Boolean isActive) {
+		List<SearchCriteria> searchCriteriaList = new ArrayList<>();
+	    searchCriteriaList.add(new SearchCriteria("mobile", ":", mobile,"OR"));
+	    searchCriteriaList.add(new SearchCriteria("email", ":", email,"OR"));
+	    searchCriteriaList.add(new SearchCriteria("isActive", ":", isActive,"AND"));
+	    
+	    // Make the REST call using your utility method
+	    ResponseDTO response = utility.makeRestCall(
+	    		coreUpdateUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS, 
+	            searchCriteriaList, 
+	            HttpMethod.POST, 
+	            ResponseDTO.class
+	    );
+	    
+	    return utility.getAnInstance(response.getData(), Profile.class);
+	}
+	
 	
 	public Profile save(Profile profile) {
 		ResponseDTO response = utility.makeRestCall(

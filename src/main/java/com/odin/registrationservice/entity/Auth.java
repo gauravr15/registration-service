@@ -2,6 +2,8 @@ package com.odin.registrationservice.entity;
 
 import java.sql.Timestamp;
 
+import javax.persistence.Column;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -51,4 +53,7 @@ public class Auth {
     
     private boolean isOtpLogin;
     
+    private String publicKey;
+
+    private String keyVersion;
 }
