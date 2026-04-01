@@ -10,6 +10,6 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic notificationTopic() {
         // name: notification-topic, partitions: 1, replication-factor: 1
-        return new NewTopic("otp-topic", 1, (short) 1);
+        return new NewTopic("otp.notification.message", 1, (short) 1);
     }
 }
