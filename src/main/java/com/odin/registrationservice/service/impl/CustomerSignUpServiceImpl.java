@@ -1,6 +1,7 @@
 package com.odin.registrationservice.service.impl;
 
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,6 +48,14 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 
 	@Value("${static.otp}")
 	private String staticOtp;
+
+	/** Comma-separated mobile numbers (with country code) that are Google Play test accounts. */
+	@Value("${test.customer.list:}")
+	private String testCustomerList;
+
+	/** Static OTP returned to test accounts — never sent via SMS. */
+	@Value("${test.customer.otp:}")
+	private String testCustomerOtp;
 	
 	@Value("${otp.expiry.duration.seconds}")
 	private int otpExpiryDuration;
@@ -125,10 +134,20 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 	public ResponseDTO signUpViaOtp(HttpServletRequest req, ProfileDTO signUpDTO) {
 
 		Profile checkProfile = profileRepo.findByMobileOrEmail(signUpDTO.getMobile(), signUpDTO.getIdNum());
+		boolean isTestCustomer = isTestCustomer(signUpDTO.getMobile());
 
-		if (!ObjectUtils.isEmpty(checkProfile)) {
+		if (!ObjectUtils.isEmpty(checkProfile) && !isTestCustomer) {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
+		} else if (!ObjectUtils.isEmpty(checkProfile) && isTestCustomer) {
+			// Test customer profile already exists — reseed static OTP without creating a duplicate.
+			// This lets the Google Play reviewer re-use the same number across review sessions.
+			log.info("Test customer {} already exists — reseeding static OTP for review flow", signUpDTO.getMobile());
+			if (signUpDTO.getMobile() != null && !signUpDTO.getMobile().isEmpty()) {
+				otpService.clearOtp(signUpDTO.getMobile(), OTPType.REGISTRATION);
+				otpService.saveOtp(signUpDTO.getMobile(), testCustomerOtp, OTPType.REGISTRATION, otpExpiryDuration);
+			}
+			return responseObj.buildResponse(ResponseCodes.OTP_SENT_SUCCESSFUL);
 		} else {
 			if (signUpDTO.getMobile().isEmpty() && signUpDTO.getEmail().isEmpty()) {
 				return responseObj.buildResponse(ResponseCodes.INVALID_REQUEST);
@@ -149,25 +168,33 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 				otpService.clearOtp(signUpDTO.getEmail(), OTPType.REGISTRATION);
 			}
 			if (signUpDTO.getMobile() != null && !signUpDTO.getMobile().isEmpty()) {
-				String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+				String otp = isTestCustomer ? testCustomerOtp
+						: isStaticOtp ? staticOtp
+						: String.valueOf((int) (Math.random() * 900000) + 100000);
 
 				otpService.saveOtp(signUpDTO.getMobile(), otp, OTPType.REGISTRATION, otpExpiryDuration);
-				Map<String, String> map = new HashMap<>();
-				map.put("otp", otp);
-				NotificationDTO notify = NotificationDTO.builder().mobile(signUpDTO.getMobile()).notificationId(2020l)
-						.channel(NotificationChannel.SMS).map(map).build();
-				notification.sendOtpMessage(notify);
+				if (!isTestCustomer) {
+					Map<String, String> map = new HashMap<>();
+					map.put("otp", otp);
+					NotificationDTO notify = NotificationDTO.builder().mobile(signUpDTO.getMobile()).notificationId(2020l)
+							.channel(NotificationChannel.SMS).map(map).build();
+					notification.sendOtpMessage(notify);
+				}
 			}
 
 			if (signUpDTO.getEmail() != null && !signUpDTO.getEmail().isEmpty()) {
-				String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+				String otp = isTestCustomer ? testCustomerOtp
+						: isStaticOtp ? staticOtp
+						: String.valueOf((int) (Math.random() * 900000) + 100000);
 
 				otpService.saveOtp(signUpDTO.getEmail(), otp, OTPType.REGISTRATION, otpExpiryDuration);
-				Map<String, String> map = new HashMap<>();
-				map.put("otp", otp);
-				NotificationDTO notify = NotificationDTO.builder().email(signUpDTO.getEmail()).notificationId(2020l)
-						.channel(NotificationChannel.EMAIL).map(map).build();
-				notification.sendOtpMessage(notify);
+				if (!isTestCustomer) {
+					Map<String, String> map = new HashMap<>();
+					map.put("otp", otp);
+					NotificationDTO notify = NotificationDTO.builder().email(signUpDTO.getEmail()).notificationId(2020l)
+							.channel(NotificationChannel.EMAIL).map(map).build();
+					notification.sendOtpMessage(notify);
+				}
 			}
 			log.info("Creating new customer");
 			Auth newAuth = Auth.builder().isActive(false).isDeleted(false).isFirstTimeLogin(true).isPermLock(false)
@@ -195,7 +222,16 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		log.info("Signup flow auth type from Redis: {}", flowAuthType);
 		Profile checkProfile = profileRepo.findByMobileOrEmailAndIsActive(signUpDTO.getMobile(), signUpDTO.getEmail(), false);
 
-		if (!ApplicationConstants.OTP.equalsIgnoreCase(flowAuthType) || !checkProfile.getAuth().isOtpLogin()) {
+		// For test accounts the profile may already be active (re-review session).
+		// Fall back to the active profile so completeSignUp can still issue a JWT.
+		if (ObjectUtils.isEmpty(checkProfile) && isTestCustomer(signUpDTO.getMobile())) {
+			log.info("Test customer — falling back to active profile for mobile: {}", signUpDTO.getMobile());
+			checkProfile = profileRepo.findByMobileOrEmail(signUpDTO.getMobile(), signUpDTO.getEmail());
+		}
+
+		if (!ApplicationConstants.OTP.equalsIgnoreCase(flowAuthType)
+				|| ObjectUtils.isEmpty(checkProfile)
+				|| (!checkProfile.getAuth().isOtpLogin() && !isTestCustomer(signUpDTO.getMobile()))) {
 			return responseObj.buildResponse(ResponseCodes.INVALID_REQUEST);
 		}
 		String sentOtp = otpService.getOtp(signUpDTO.getMobile(), OTPType.REGISTRATION);
@@ -208,7 +244,8 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		}
 		signUpDTO.getAuth().setPassword(ApplicationConstants.OTP_BASED_AUTH);
 
-		if (!ObjectUtils.isEmpty(checkProfile) && !checkProfile.getAuth().getIsFirstTimeLogin()) {
+		if (!ObjectUtils.isEmpty(checkProfile) && !checkProfile.getAuth().getIsFirstTimeLogin()
+				&& !isTestCustomer(signUpDTO.getMobile())) {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
 		} else {
@@ -235,6 +272,44 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			checkProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.USER_CREATED, jwtResponse);
 		}
+	}
+
+	/**
+	 * Returns true if the given mobile belongs to the Google Play test account list.
+	 * Test accounts receive a predefined static OTP and no SMS is ever dispatched.
+	 *
+	 * Country-code-tolerant: compares both numbers by their longest common digit suffix.
+	 * The match is accepted only when:
+	 *   - the shared suffix is >= 8 digits (long enough to be a real subscriber number), AND
+	 *   - the non-matching leading portion of each number is <= 4 digits (valid CC length).
+	 * This means +91AAAA, +33AAAA, +1AAAA all match the same stored entry regardless
+	 * of which country the reviewer selects in the app dropdown.
+	 */
+	private boolean isTestCustomer(String mobile) {
+		if (testCustomerList == null || testCustomerList.trim().isEmpty()) return false;
+		if (mobile == null || mobile.trim().isEmpty()) return false;
+		return Arrays.stream(testCustomerList.split(","))
+				.map(String::trim)
+				.filter(entry -> entry.length() >= 8)
+				.anyMatch(entry -> sameSubscriberNumber(mobile, entry));
+	}
+
+	/**
+	 * Compares two phone numbers by their subscriber portion, ignoring any country-code prefix.
+	 * Uses the longest common suffix: if both numbers share >= 8 trailing digits AND the
+	 * unmatched leading fragment of each is <= 4 characters, they are considered the same number.
+	 */
+	private boolean sameSubscriberNumber(String a, String b) {
+		if (a.equals(b)) return true;
+		int i = a.length() - 1, j = b.length() - 1, commonLen = 0;
+		while (i >= 0 && j >= 0 && a.charAt(i) == b.charAt(j)) {
+			commonLen++;
+			i--;
+			j--;
+		}
+		int remainingA = a.length() - commonLen;
+		int remainingB = b.length() - commonLen;
+		return commonLen >= 8 && remainingA <= 4 && remainingB <= 4;
 	}
 
 }
