@@ -99,10 +99,16 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		signUpDTO.getAuth().setPassword(hashedPassword);
 		Profile checkProfile = profileRepo.findByMobileOrEmail(signUpDTO.getMobile(), signUpDTO.getIdNum());
 
-		if (!ObjectUtils.isEmpty(checkProfile)) {
+		if (!ObjectUtils.isEmpty(checkProfile) && !Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
-		} else {
+		}
+
+		if (!ObjectUtils.isEmpty(checkProfile) && Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
+			log.info("Re-registration: soft-deleted account found for mobile={}, allowing re-signup", signUpDTO.getMobile());
+		}
+
+		if (ObjectUtils.isEmpty(checkProfile) || Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
 			log.info("Creating new customer");
 			Auth newAuth = Auth.builder().isActive(true).isDeleted(false).isFirstTimeLogin(true).isPermLock(false)
 					.isTempLock(false).isTempPassword(true).incorrectPasswordCount(0).passwordChangeCount(0)
@@ -119,6 +125,8 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			newProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.USER_CREATED, newProfile);
 		}
+		// Should never reach here — active profile check already returned USER_EXISTS above
+		return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
 	}
 
 	@Override
@@ -126,10 +134,16 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 
 		Profile checkProfile = profileRepo.findByMobileOrEmail(signUpDTO.getMobile(), signUpDTO.getIdNum());
 
-		if (!ObjectUtils.isEmpty(checkProfile)) {
+		if (!ObjectUtils.isEmpty(checkProfile) && !Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
-		} else {
+		}
+
+		if (!ObjectUtils.isEmpty(checkProfile) && Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
+			log.info("Re-registration: soft-deleted account found for mobile={}, allowing re-signup via OTP", signUpDTO.getMobile());
+		}
+
+		if (ObjectUtils.isEmpty(checkProfile) || Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
 			if (signUpDTO.getMobile().isEmpty() && signUpDTO.getEmail().isEmpty()) {
 				return responseObj.buildResponse(ResponseCodes.INVALID_REQUEST);
 			}
@@ -185,6 +199,8 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			newProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.OTP_SENT_SUCCESSFUL);
 		}
+		// Should never reach here — active profile check already returned USER_EXISTS above
+		return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
 	}
 
 	@Override
