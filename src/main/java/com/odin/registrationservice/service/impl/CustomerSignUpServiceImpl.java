@@ -163,7 +163,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 				otpService.clearOtp(signUpDTO.getEmail(), OTPType.REGISTRATION);
 			}
 			if (signUpDTO.getMobile() != null && !signUpDTO.getMobile().isEmpty()) {
-				String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+				String otp = isStaticOtp || ! signUpDTO.getMobile().startsWith("+91") ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
 
 				otpService.saveOtp(signUpDTO.getMobile(), otp, OTPType.REGISTRATION, otpExpiryDuration);
 				Map<String, String> map = new HashMap<>();
