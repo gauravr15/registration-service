@@ -12,6 +12,8 @@ import com.odin.registrationservice.constants.ApplicationConstants;
 import com.odin.registrationservice.dto.ProfileDTO;
 import com.odin.registrationservice.dto.ResponseDTO;
 import com.odin.registrationservice.entity.Profile;
+import com.odin.registrationservice.dto.LifecycleTransitionRequest;
+import com.odin.registrationservice.dto.LifecycleTransitionResult;
 import com.odin.registrationservice.utility.SearchCriteria;
 import com.odin.registrationservice.utility.Utility;
 
@@ -66,10 +68,28 @@ public class ProfileRepository {
 	
 	
 	public Profile save(Profile profile) {
+		return saveActive(profile);
+	}
+
+	public Profile saveActive(Profile profile) {
 		ResponseDTO response = utility.makeRestCall(
-				coreUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.SAVE, profile, HttpMethod.POST,
-				ResponseDTO.class);
+					coreUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.SAVE + "/active", profile, HttpMethod.POST,
+					ResponseDTO.class);
 		return utility.getAnInstance(response.getData(), Profile.class);
+	}
+
+	public Profile saveInactive(Profile profile) {
+		ResponseDTO response = utility.makeRestCall(
+				coreUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.SAVE + "/inactive", profile,
+				HttpMethod.POST, ResponseDTO.class);
+		return utility.getAnInstance(response.getData(), Profile.class);
+	}
+
+	public LifecycleTransitionResult transition(LifecycleTransitionRequest request) {
+		ResponseDTO response = utility.makeRestCall(
+				coreUpdateUrl + ApplicationConstants.CUSTOMER + "/lifecycle", request,
+				HttpMethod.POST, ResponseDTO.class);
+		return utility.getAnInstance(response.getData(), LifecycleTransitionResult.class);
 	}
 
 }

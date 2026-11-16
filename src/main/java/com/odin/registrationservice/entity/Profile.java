@@ -20,6 +20,8 @@ import lombok.ToString;
 public class Profile {
 
 	private Integer customerId;
+	private String lifecycleSubjectId;
+	private Long lifecycleRevision;
 
 	private String parentCustomerId;
 

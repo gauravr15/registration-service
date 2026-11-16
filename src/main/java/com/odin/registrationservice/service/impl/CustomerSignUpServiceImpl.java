@@ -19,6 +19,7 @@ import com.odin.registrationservice.dto.JwtDTO;
 import com.odin.registrationservice.dto.NotificationDTO;
 import com.odin.registrationservice.dto.ProfileDTO;
 import com.odin.registrationservice.dto.ResponseDTO;
+import com.odin.registrationservice.dto.LifecycleTransitionResult;
 import com.odin.registrationservice.entity.Auth;
 import com.odin.registrationservice.entity.Profile;
 import com.odin.registrationservice.entity.RefreshToken;
@@ -27,6 +28,7 @@ import com.odin.registrationservice.enums.OTPType;
 import com.odin.registrationservice.repo.ProfileRepository;
 import com.odin.registrationservice.repo.RefreshTokenRepository;
 import com.odin.registrationservice.service.SignUpService;
+import com.odin.registrationservice.service.LifecycleTransitionCoordinator;
 import com.odin.registrationservice.utility.JwtTokenUtil;
 import com.odin.registrationservice.utility.NotificationUtility;
 import com.odin.registrationservice.utility.OtpService;
@@ -70,6 +72,9 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 	private ProfileRepository profileRepo;
 
 	@Autowired
+	private LifecycleTransitionCoordinator lifecycleTransitionCoordinator;
+
+	@Autowired
 	private OtpService otpService;
 
 	@Autowired
@@ -105,7 +110,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		}
 
 		if (!ObjectUtils.isEmpty(checkProfile) && Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
-			log.info("Re-registration: soft-deleted account found for mobile={}, allowing re-signup", signUpDTO.getMobile());
+			log.info("Re-registration: soft-deleted account found; allowing re-signup");
 		}
 
 		if (ObjectUtils.isEmpty(checkProfile) || Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
@@ -121,7 +126,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 					.isDeleted(false).isNotificationEnabled(true).isTransactionEnabled(false)
 					.firstName(signUpDTO.getFirstName()).lastName(signUpDTO.getLastName()).mobile(signUpDTO.getMobile())
 					.build();
-			newProfile = profileRepo.save(newProfile);
+				newProfile = profileRepo.saveActive(newProfile);
 			newProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.USER_CREATED, newProfile);
 		}
@@ -140,7 +145,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 		}
 
 		if (!ObjectUtils.isEmpty(checkProfile) && Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
-			log.info("Re-registration: soft-deleted account found for mobile={}, allowing re-signup via OTP", signUpDTO.getMobile());
+			log.info("Re-registration: soft-deleted account found; allowing re-signup via OTP");
 		}
 
 		if (ObjectUtils.isEmpty(checkProfile) || Boolean.TRUE.equals(checkProfile.getIsDeleted())) {
@@ -195,7 +200,7 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 					.isDeleted(false).isNotificationEnabled(true).isTransactionEnabled(false)
 					.firstName(signUpDTO.getFirstName()).lastName(signUpDTO.getLastName()).mobile(signUpDTO.getMobile())
 					.build();
-			newProfile = profileRepo.save(newProfile);
+			newProfile = profileRepo.saveInactive(newProfile);
 			newProfile.setAuth(null);
 			return responseObj.buildResponse(ResponseCodes.OTP_SENT_SUCCESSFUL);
 		}
@@ -228,9 +233,15 @@ public class CustomerSignUpServiceImpl implements SignUpService {
 			log.error("Customer already exists with customer id: {}", checkProfile.getCustomerId());
 			return responseObj.buildResponse(LanguageConstants.EN, ResponseCodes.USER_EXISTS);
 		} else {
+			LifecycleTransitionResult activation = lifecycleTransitionCoordinator.execute(
+					checkProfile.getCustomerId(), checkProfile.getLifecycleSubjectId(),
+					"ACTIVATE", checkProfile.getLifecycleRevision());
+			if (activation == null) {
+				throw new IllegalStateException("Lifecycle activation result is missing");
+			}
 			checkProfile.setIsActive(true);
+			checkProfile.setLifecycleRevision(activation.getLifecycleRevision());
 			checkProfile.getAuth().setIsActive(true);
-			profileRepo.save(checkProfile);
 			String accessToken = jwtTokenUtil.generateAccessToken(String.valueOf(checkProfile.getCustomerId()),
 					deviceSignature);
 			String refreshToken = jwtTokenUtil.generateRefreshToken();
